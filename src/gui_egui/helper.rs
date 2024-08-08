@@ -1,7 +1,8 @@
-use crate::common::{Components, Ports};
+use crate::common::{Components, EguiComponent, Ports, SignalValue, Simulator};
 use crate::gui_egui::editor::{EditorMode, SnapPriority};
 use egui::{
-    Align2, Area, Color32, Context, InnerResponse, Order, Pos2, Rect, RichText, Sense, Ui, Vec2,
+    Align2, Area, Color32, Context, InnerResponse, Order, Pos2, Rect, Response, RichText, Sense,
+    Ui, Vec2,
 };
 use epaint::Shadow;
 
@@ -134,4 +135,72 @@ pub fn component_area<R>(
         .pivot(Align2::CENTER_CENTER)
         .constrain(false)
         .show(ctx, content)
+}
+
+/// This renders a component
+/// Use Content to add label or other into
+pub fn basic_component_gui<'a>(
+    component: &dyn EguiComponent,
+    simulator: &Option<&mut Simulator>,
+    ctx: &Context,
+    size: impl Into<Vec2>,
+    offset: impl Into<Vec2>,
+    scale: f32,
+    content: impl FnOnce(&mut Ui),
+    on_hover: Option<impl FnOnce(&'a mut Ui)>,
+) -> Option<Vec<Response>> {
+    let size: Vec2 = size.into();
+    let offset: Vec2 = offset.into();
+
+    let r = component_area(component.get_id_ports().0, ctx, Pos2::from(component.get_pos())* scale+offset, |ui| {
+        ui.group(|ui| {
+            ui.set_height(size.y * scale);
+            ui.set_width(size.x * scale);
+            content(&mut ui);
+        })
+        .response
+    })
+    .inner;
+
+    r.clone().on_hover_ui(|ui| {
+
+        match on_hover {
+            Some(hover_content) => hover_content(&mut ui),
+            None => {
+                ui.label(format!("id: {}", component.get_id_ports().0));
+                if let Some(sim) = simulator {
+                    ui.separator();
+                    for port in component.get_id_ports().1.inputs {
+                        ui.label(format!(
+                            "{} <- {}:{} ({})",
+                            port.port_id,
+                            port.input.id,
+                            port.input.field,
+                            match sim.get_input_value(&port.input) {
+                                SignalValue::Uninitialized => "Uninitialized".to_string(),
+                                SignalValue::Unknown => "Unknown".to_string(),
+                                SignalValue::DontCare => "DontCare".to_string(),
+                                SignalValue::Data(v) => format!("{:#010x}", v),
+                            },
+                        ));
+                    }
+                    ui.separator();
+                    for port_id in component.get_id_ports().1.outputs {
+                        ui.label(format!(
+                            "{} -> {}",
+                            port_id,
+                            match sim.get_input_value(&Input::new(&self.id, &port_id)) {
+                                SignalValue::Uninitialized => "Uninitialized".to_string(),
+                                SignalValue::Unknown => "Unknown".to_string(),
+                                SignalValue::DontCare => "DontCare".to_string(),
+                                SignalValue::Data(v) => format!("{:#010x}", v),
+                            },
+                        ));
+                    }
+            },
+        }
+
+        }
+    });
+    Some(vec![r])
 }
