@@ -2,8 +2,8 @@ use crate::common::{EguiComponent, Id, Ports, Simulator};
 use crate::components::ControlUnit;
 use crate::gui_egui::editor::{EditorMode, EditorRenderReturn, GridOptions};
 use crate::gui_egui::gui::EguiExtra;
-use crate::gui_egui::helper::{component_area, offset_helper};
-use egui::{Label, Pos2, Rect, Response, RichText, Ui, Vec2};
+use crate::gui_egui::helper::basic_component_gui;
+use egui::{Rect, Response, RichText, Ui, Vec2};
 
 #[typetag::serde]
 impl EguiComponent for ControlUnit {
@@ -11,37 +11,29 @@ impl EguiComponent for ControlUnit {
         &self,
         ui: &mut Ui,
         _context: &mut EguiExtra,
-        _simulator: Option<&mut Simulator>,
+        simulator: Option<&mut Simulator>,
         offset: Vec2,
         scale: f32,
         _clip_rect: Rect,
         _editor_mode: EditorMode,
     ) -> Option<Vec<Response>> {
         // size of the component
-        let width = 200f32;
-        let height: f32 = 20f32;
-        let rect = Rect::from_center_size(
-            (Pos2::from(self.pos) * scale + offset),
-            Vec2 {
-                x: width,
-                y: height,
-            } * scale,
-        );
-        let r = component_area(self.id.to_string(), ui.ctx(), rect.center(), |ui| {
-            ui.set_height(rect.height());
-            ui.set_width(rect.width());
-            ui.group(|ui| {
-                ui.add_sized(
-                    ui.available_size_before_wrap(),
-                    // Change string here for another name
-                    Label::new(RichText::new("Control Unit").size(12f32 * scale)),
-                )
-            })
-            .response
-        })
-        .inner;
-
-        Some(vec![r])
+        let width = 400f32;
+        let height: f32 = 0f32;
+        basic_component_gui(
+            self,
+            &simulator,
+            ui.ctx(),
+            (width, height),
+            offset,
+            scale,
+            |ui| {
+                ui.label(RichText::new("Control Unit").size(12f32 * scale));
+            },
+            // This is a hack to stop the compiler from complaining
+            // will hopefully be optimized away
+            None::<Box<dyn FnOnce(&mut Ui)>>,
+        )
     }
 
     fn render_editor(

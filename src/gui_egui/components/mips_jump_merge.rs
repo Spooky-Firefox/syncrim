@@ -1,9 +1,9 @@
-use crate::common::{Component, EguiComponent, Id, Input, Ports, SignalValue, Simulator};
-use crate::components::{ControlUnit, JumpMerge};
+use crate::common::{EguiComponent, Id, Ports, Simulator};
+use crate::components::JumpMerge;
 use crate::gui_egui::editor::{EditorMode, EditorRenderReturn, GridOptions};
 use crate::gui_egui::gui::EguiExtra;
-use crate::gui_egui::helper::{basic_component_gui, component_area, offset_helper};
-use egui::{Label, Pos2, Rect, Response, RichText, Ui, Vec2};
+use crate::gui_egui::helper::basic_component_gui;
+use egui::{Rect, Response, RichText, Ui, Vec2};
 
 #[typetag::serde]
 impl EguiComponent for JumpMerge {
@@ -28,9 +28,11 @@ impl EguiComponent for JumpMerge {
             offset,
             scale,
             |ui| {
-                ui.label("Jump Merge");
+                ui.label(RichText::new("Jump Merge").size(12f32 * scale));
             },
-            (None::<FnOnce(&mut Ui)>),
+            // This is a hack to stop the compiler from complaining
+            // will hopefully be optimized away
+            None::<Box<dyn FnOnce(&mut Ui)>>,
         )
     }
 
