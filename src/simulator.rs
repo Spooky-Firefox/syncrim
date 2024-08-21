@@ -1,6 +1,6 @@
 use crate::common::{
-    Component, ComponentStore, Condition, Id, Input, OutputType, Signal, SignalFmt, SignalValue,
-    Simulator,
+    Component, ComponentStore, Condition, Id, Input, OutputType, RunningState, Signal, SignalFmt,
+    SignalValue, Simulator, SimulatorError,
 };
 use log::*;
 use petgraph::{
@@ -158,7 +158,9 @@ impl Simulator {
             history: vec![],
             component_ids,
             graph,
-            running: false,
+            halt_on_warning: false,
+            running_state: RunningState::Stopped,
+            component_condition: vec![],
         };
 
         trace!("sim_state {:?}", simulator.sim_state);
@@ -254,46 +256,79 @@ impl Simulator {
         // push current state
         self.history.push(self.sim_state.clone());
         trace!("cycle:{}", self.cycle);
+
+        // TODO push component state
+        // clear component condition data for this new cycle
+        self.component_condition.clear();
         for component in self.ordered_components.clone() {
             //trace!("evaling component:{}", component.get_id_ports().0);
             match component.clock(self) {
                 Ok(_) => {}
-                Err(cond) => match cond {
-                    Condition::Warning(warn) => {
-                        trace!("warning {}", warn)
+                Err(cond) => {
+                    self.component_condition
+                        .push((component.get_id_ports().0, cond.clone()));
+                    match cond {
+                        Condition::Warning(warn) => {
+                            trace!("warning {}", warn);
+                            if self.halt_on_warning {
+                                self.running_state = RunningState::Halt;
+                            }
+                        }
+                        Condition::Error(err) => {
+                            error!("component error {}", err);
+                            self.running_state = RunningState::Err;
+                        }
+                        Condition::Assert(assert) => {
+                            error!("assertion failed {}", assert);
+                            self.running_state = RunningState::Halt;
+                        }
+                        Condition::Halt(halt) => {
+                            info!("halt {}", halt);
+                            self.running_state = RunningState::Halt;
+                        }
                     }
-                    Condition::Error(err) => panic!("err {}", err),
-                    Condition::Assert(assert) => {
-                        error!("assertion failed {}", assert);
-                        self.running = false;
-                    }
-                    Condition::Halt(halt) => {
-                        self.running = false;
-                        info!("halt {}", halt)
-                    }
-                },
+                }
             }
         }
         self.cycle = self.history.len();
     }
 
-    /// free running mode until Halt condition
+    /// free running mode until Halt condition or target cycle, breaks after 1/30 sec
     pub fn run(&mut self) {
         use std::time::Instant;
         let now = Instant::now();
+        let mut i: u32 = 0; // used to quickly and inaccurately test performance
         while now.elapsed().as_millis() < 1000 / 30 {
-            //60Hz
-            if self.running {
-                self.clock()
+            //30Hz
+            i += 1;
+            match self.running_state {
+                RunningState::Running => self.clock(),
+                RunningState::StepTo(target_cycle) => {
+                    if self.cycle < target_cycle {
+                        self.clock();
+                    } else {
+                        self.running_state = RunningState::Stopped;
+                        break;
+                    }
+                }
+                _ => {
+                    break;
+                }
             }
         }
+        trace!("clock per run {}", i)
     }
 
     pub fn run_threaded(&mut self) {}
 
     /// stop the simulator from gui or other external reason
-    pub fn stop(&mut self) {
-        self.running = false;
+    pub fn stop(&mut self) -> Result<(), SimulatorError> {
+        if self.running_state != RunningState::Err {
+            self.running_state = RunningState::Stopped;
+            Ok(())
+        } else {
+            Err(SimulatorError::RunningStateIsErr())
+        }
     }
 
     /// reverse simulation using history if clock > 1
@@ -304,6 +339,7 @@ impl Simulator {
             self.sim_state = state;
             // to ensure that history length and cycle count complies
             self.cycle = self.history.len();
+            // TODO add component_condition history pop
 
             for component in self.ordered_components.clone() {
                 component.un_clock();
@@ -316,16 +352,57 @@ impl Simulator {
         self.history = vec![];
         self.cycle = 0;
         self.sim_state.iter_mut().for_each(|val| *val = 0.into());
-        self.stop();
+        self.running_state = RunningState::Stopped;
         self.clock();
-
+        // TODO probably needed to reset component_condition, maybe is handeld correctly by clock who knows?
         for component in self.ordered_components.clone() {
             component.reset();
         }
     }
 
-    pub fn get_state(&self) -> bool {
-        self.running
+    // return the enum which describes the current state
+    // to get component_condition use get_component_condition()
+    pub fn get_state(&self) -> &RunningState {
+        &self.running_state
+    }
+
+    pub fn is_running(&self) -> bool {
+        match self.running_state {
+            RunningState::Running => true,
+            RunningState::StepTo(_) => true,
+            RunningState::Halt => false,
+            RunningState::Err => false,
+            RunningState::Stopped => false,
+        }
+    }
+
+    // TODO return error if simulator running state is Err
+    pub fn set_running(&mut self) -> Result<(), SimulatorError> {
+        if self.running_state != RunningState::Err {
+            self.running_state = RunningState::Running;
+            Ok(())
+        } else {
+            Err(SimulatorError::RunningStateIsErr())
+        }
+    }
+
+    // TODO return error if simulator running state is Err
+    pub fn set_step_to(&mut self, target_cycle: usize) -> Result<(), SimulatorError> {
+        if self.running_state != RunningState::Err {
+            self.running_state = RunningState::StepTo(target_cycle);
+            Ok(())
+        } else {
+            Err(SimulatorError::RunningStateIsErr())
+        }
+    }
+    // This function returns Some() if there are any components
+    // in the current cycle that reported any Condition
+    pub fn get_component_condition(&self) -> Option<Vec<(Id, Condition)>> {
+        if self.component_condition.is_empty() {
+            None
+        } else {
+            Some(self.component_condition.clone())
+        }
     }
 
     /// save as `dot` file with `.gv` extension
