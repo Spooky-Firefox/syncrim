@@ -201,7 +201,7 @@ fn main() {
             ),
             //
             //
-            Constant::rc_new("0x_1F", (3750.0, 5500.0), 0),
+            Constant::rc_new("0x_1F", (3750.0, 5500.0), 0x_1F),
             Mux::rc_new(
                 "mux_write_addr",
                 (3800.0, 5500.0),
