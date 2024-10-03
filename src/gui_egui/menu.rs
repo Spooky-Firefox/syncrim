@@ -1,5 +1,6 @@
 use crate::gui_egui::{
-    editor::{Editor, GridOptions},
+    editor::{self, Editor, GridOptions},
+    editor_wire_mode::reset_wire_mode,
     gui::Gui,
     keymap,
 };
@@ -123,9 +124,25 @@ impl Menu {
             shared_buttons_help(gui, ui);
         });
         ui.horizontal(|ui| {
-            let wire_button = ui.button("➖").on_hover_text("Wire mode");
-            if wire_button.clicked() {
-                keymap::editor_wire_mode_fn(gui);
+            let editor = gui.editor.as_mut().unwrap();
+            let old_mode = editor.editor_mode.clone();
+            ui.selectable_value(
+                &mut editor.editor_mode,
+                editor::EditorMode::Default,
+                "Default",
+            );
+            ui.selectable_value(&mut editor.editor_mode, editor::EditorMode::Wire, "Wire");
+            ui.selectable_value(
+                &mut editor.editor_mode,
+                editor::EditorMode::ForceMove,
+                "Force Move",
+            );
+
+            // if we changed from wire mode to another
+            if old_mode == editor::EditorMode::Wire
+                && editor.editor_mode != editor::EditorMode::Wire
+            {
+                reset_wire_mode(&mut editor.wm);
             }
         });
     }

@@ -422,11 +422,11 @@ pub fn editor_wire_mode_fn(gui: &mut Gui) {
     if gui.editor_use {
         let editor = gui.editor.as_mut().unwrap();
         match editor.editor_mode {
-            EditorMode::Default | EditorMode::Input | EditorMode::Simulator => {
-                editor.editor_mode = EditorMode::Wire;
-            }
             EditorMode::Wire => {
                 editor.editor_mode = EditorMode::Default;
+            }
+            _ => {
+                editor.editor_mode = EditorMode::Wire;
             }
         }
         reset_wire_mode(&mut editor.wm);

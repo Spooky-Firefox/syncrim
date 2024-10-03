@@ -10,13 +10,17 @@ use crate::gui_egui::{
     menu::Menu,
 };
 use eframe::{egui, Frame};
-use egui::{Color32, Context, LayerId, PointerButton, Pos2, Rect, Shape, Vec2};
+use egui::{
+    Color32, Context, Label, LayerId, PointerButton, Pos2, Rect, Response, Sense, Shape, Vec2,
+};
 use std::{
     collections::{BTreeMap, HashMap},
     ops::Range,
     path::Path,
     rc::Rc,
 };
+
+use super::helper::basic_component_gui_with_on_hover;
 
 pub struct Editor {
     pub components: Components,
@@ -46,12 +50,13 @@ pub struct CloseToComponent {
     pub potential_actual_input: Option<Input>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EditorMode {
     Simulator,
     Default,
     Wire,
     Input,
+    ForceMove,
 }
 
 #[cfg(feature = "gui-egui")]
@@ -356,6 +361,19 @@ impl Editor {
                         }
                     }
                 }
+
+                EditorMode::ForceMove => {
+                    for comp in &mut e.components {
+                        // unwrap is safe since we know it always returns some
+                        let mut r: Option<Response> = None;
+                        basic_component_gui_with_on_hover(comp.as_ref(), ctx, e.offset +e.pan, e.scale, e.clip_rect, |ui| {r = Some(ui.add(Label::new(comp.get_id_ports().0).sense(Sense::drag())));}, |_| {}).unwrap();
+                        if r.clone().unwrap().dragged(){
+                            let pos = comp.get_pos();
+                            let d_delta = r.unwrap().drag_delta();
+                            (*Rc::get_mut(comp).unwrap()).set_pos((pos.0 +d_delta.x, pos.1 + d_delta.y));
+                        }
+                    }
+                }
                 _ => e.components.retain_mut(|c| {
                     let old_key = c.as_ref().get_id_ports().0;
                     let mut context = e.contexts.remove(&old_key).unwrap();
@@ -385,7 +403,7 @@ impl Editor {
         let e = Editor::gui_to_editor(gui);
 
         let cpr = central_panel.response.interact(egui::Sense::drag());
-        if cpr.dragged_by(PointerButton::Middle) {
+        if cpr.dragged_by(PointerButton::Primary) {
             e.pan += cpr.drag_delta();
             e.offset_and_pan = e.pan + e.offset;
         }
@@ -395,6 +413,7 @@ impl Editor {
             EditorMode::Default | EditorMode::Simulator => {
                 ctx.output_mut(|o| o.cursor_icon = egui::CursorIcon::Default)
             }
+            EditorMode::ForceMove => {}
         }
         if central_panel.response.hovered() {
             ctx.input_mut(|i| {
