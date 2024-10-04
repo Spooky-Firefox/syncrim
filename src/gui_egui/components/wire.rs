@@ -336,6 +336,15 @@ impl EguiComponent for Wire {
     }
 
     fn get_pos(&self) -> (f32, f32) {
-        (0f32, 0f32)
+        *self.pos.first().unwrap_or(&(0.0, 0.0))
+    }
+
+    fn set_pos(&mut self, new_pos: (f32, f32)) {
+        let delta = (new_pos.0 - self.get_pos().0, new_pos.1 - self.get_pos().1);
+
+        for point in self.pos.iter_mut() {
+            point.0 += delta.0;
+            point.1 += delta.1;
+        }
     }
 }
